@@ -75,7 +75,7 @@ select:focus{border-color:var(--accent)}
 .risk-pill.none {background:rgba(90,122,94,.10);color:var(--muted)}
 
 /* big cost display */
-.cost-row{display:none}
+.cost-row{display:flex;align-items:baseline;gap:18px;margin-bottom:4px}
 .cost-big{font-family:'Syne',sans-serif;font-size:48px;font-weight:800;line-height:1;letter-spacing:-2px}
 .cost-big.low {color:var(--green)}
 .cost-big.mod {color:var(--amber)}
@@ -83,7 +83,13 @@ select:focus{border-color:var(--accent)}
 .cost-big.none{color:var(--muted)}
 .cost-unit{color:var(--muted);font-size:13px;padding-bottom:8px;line-height:1.3}
 .cost-unit span{display:block}
-.prob-line{display:none}
+.cost-pct{font-family:'Syne',sans-serif;font-weight:800;font-size:22px;line-height:1.1;padding-bottom:8px}
+.cost-pct span{display:block;font-family:'DM Mono',monospace;font-weight:400;font-size:11px;color:var(--muted);letter-spacing:0;text-transform:none}
+.cost-pct.low {color:var(--green)}
+.cost-pct.mod {color:var(--amber)}
+.cost-pct.high{color:var(--red)}
+.cost-pct.none{color:var(--muted)}
+.prob-line{display:block;color:var(--muted);font-size:12px;margin-bottom:10px}
 .prob-line strong{color:var(--text)}
 .peak-flag-wrap{margin-top:6px}
 .peak-flag{display:inline-block;font-size:11px;font-weight:500;padding:3px 9px;border-radius:10px;letter-spacing:.01em}
@@ -210,6 +216,7 @@ select:focus{border-color:var(--accent)}
 .bec.mod {color:var(--amber)}
 .bec.low {color:var(--green)}
 .bec-nostop{font-size:9.5px;font-weight:600;color:var(--red);margin-top:2px}
+.bec-chance{font-size:9.5px;font-weight:400;color:var(--muted)}
 .sparse-badge{font-size:10px;color:var(--muted);font-weight:400;letter-spacing:.02em}
 
 .bdetail{background:var(--bg);border:1px solid var(--border);border-top:none;
@@ -606,7 +613,7 @@ function zoneHoursBannerHtml(zoneMatch, dow, hour){
     const paidNow = isZonePaidAtHour(z, dow, hour);
     const {rate} = zoneRateForDow(z, dow);
     const rushRow = !paidNow && isRush;
-    const price = paidNow ? (rate||'—') : (rushRow ? 'rush — check signs' : 'check signs');
+    const price = paidNow ? (rate?rate+'/30min':'—') : (rushRow ? 'rush — check signs' : 'check signs');
     return `<div class="zone-drop-row">
         <span class="zone-drop-name"><span class="zone-drop-num">P${z.num}</span>${z.name}</span>
         <span class="zone-drop-price ${paidNow?'paid':(rushRow?'rush':'free')}">${price}</span>
@@ -979,9 +986,9 @@ function paintZoneCard(zone, hour, dow, out, street, blockInfo){
       : `<div class="zone-hours-banner free">🅿 <strong>Check signs</strong> — outside Pay &amp; Display hours right now for this zone</div>`;
   const rateHtml = `
     <div class="zone-rates">
-      <div class="zone-rate"><div class="zone-rate-l">Weekday</div><div class="zone-rate-v">${zone.wr||'—'}</div><div class="zone-rate-h">${(zone.wh||[]).join(', ')||'—'}</div></div>
-      <div class="zone-rate"><div class="zone-rate-l">Saturday</div><div class="zone-rate-v">${zone.sar||'—'}</div><div class="zone-rate-h">${(zone.sah||[]).join(', ')||'—'}</div></div>
-      <div class="zone-rate"><div class="zone-rate-l">Sunday</div><div class="zone-rate-v">${zone.sur||'—'}</div><div class="zone-rate-h">${(zone.suh||[]).join(', ')||'—'}</div></div>
+      <div class="zone-rate"><div class="zone-rate-l">Weekday</div><div class="zone-rate-v">${zone.wr?zone.wr+' <span style="font-size:10px;font-weight:400;color:var(--muted)">/30min</span>':'—'}</div><div class="zone-rate-h">${(zone.wh||[]).join(', ')||'—'}</div></div>
+      <div class="zone-rate"><div class="zone-rate-l">Saturday</div><div class="zone-rate-v">${zone.sar?zone.sar+' <span style="font-size:10px;font-weight:400;color:var(--muted)">/30min</span>':'—'}</div><div class="zone-rate-h">${(zone.sah||[]).join(', ')||'—'}</div></div>
+      <div class="zone-rate"><div class="zone-rate-l">Sunday</div><div class="zone-rate-v">${zone.sur?zone.sur+' <span style="font-size:10px;font-weight:400;color:var(--muted)">/30min</span>':'—'}</div><div class="zone-rate-h">${(zone.suh||[]).join(', ')||'—'}</div></div>
     </div>`;
 
   let riskHtml;
@@ -994,18 +1001,24 @@ function paintZoneCard(zone, hour, dow, out, street, blockInfo){
     if(blockEcArr){
       const ec = blockEcArr[hour];
       const rc = riskClass(ec), rl = riskLabel(ec);
+      const blockFine = streetFine(street, hour);
+      const pctChance = blockFine>0 ? (ec/blockFine*100) : 0;
       const nostopArr = blockInfo && blockPatrolEcs(street, blockInfo.block, dow, 'nostop');
       const nostopHtml = nostopArr ? `<div class="ec-compare risk-cheaper">No-stopping zone risk at this block: <strong>${fmtCost(nostopArr[hour])}/hr</strong> (separate from the legal-parking-zone estimate above — this covers stopping/standing bans like transit lanes, not overstaying a paid spot).</div>` : '';
       let compareHtml = '';
       if(paidNow){
-        const rateNum = parseRateNum(zoneRateForDow(zone, dow).rate);
-        if(!isNaN(rateNum)){
-          if(Math.abs(rateNum-ec) < 0.01){
-            compareHtml = `<div class="ec-compare neutral">Expected ticket cost (${fmtCost(ec)}/hr) is about equal to the meter rate (${fmtCost(rateNum)}/hr).</div>`;
-          } else if(ec < rateNum){
-            compareHtml = `<div class="ec-compare risk-cheaper">Expected ticket cost (${fmtCost(ec)}/hr) is <strong>lower</strong> than the meter rate (${fmtCost(rateNum)}/hr).</div>`;
+        // Zone rates are posted per 30 min, not per hour — double to get the hourly
+        // equivalent so this compares apples-to-apples against ec, which is $/hr.
+        const rateHalfHour = parseRateNum(zoneRateForDow(zone, dow).rate);
+        if(!isNaN(rateHalfHour)){
+          const rateHourly = rateHalfHour * 2;
+          const rateNote = `${fmtCost(rateHourly)}/hr (${fmtCost(rateHalfHour)} per 30 min)`;
+          if(Math.abs(rateHourly-ec) < 0.01){
+            compareHtml = `<div class="ec-compare neutral">Expected ticket cost (${fmtCost(ec)}/hr) is about equal to the meter rate (${rateNote}).</div>`;
+          } else if(ec < rateHourly){
+            compareHtml = `<div class="ec-compare risk-cheaper">Expected ticket cost (${fmtCost(ec)}/hr) is <strong>lower</strong> than the meter rate (${rateNote}).</div>`;
           } else {
-            compareHtml = `<div class="ec-compare pay-cheaper">Expected ticket cost (${fmtCost(ec)}/hr) is <strong>higher</strong> than the meter rate (${fmtCost(rateNum)}/hr).</div>`;
+            compareHtml = `<div class="ec-compare pay-cheaper">Expected ticket cost (${fmtCost(ec)}/hr) is <strong>higher</strong> than the meter rate (${rateNote}).</div>`;
           }
         }
       }
@@ -1015,8 +1028,9 @@ function paintZoneCard(zone, hour, dow, out, street, blockInfo){
           <div class="risk-pill ${rc}">${rl}</div>
         </div>
         <div class="cost-row" style="display:flex;align-items:baseline;gap:10px;margin-bottom:14px">
-          <div class="cost-big ${rc}" style="font-size:32px">${fmtCost(ec)}</div>
-          <div class="cost-unit"><span>expected cost</span><span>per hour parked, this zone/block</span></div>
+          <div class="cost-big ${rc}" style="font-size:32px">${pctChance.toFixed(1)}%</div>
+          <div class="cost-unit"><span>chance of ticket</span><span>this hour, this day of week</span></div>
+          <div class="cost-pct ${rc}" style="font-size:18px">${fmtCost(ec)}<span>expected cost/hr</span></div>
         </div>
         ${compareHtml}
         ${nostopHtml}
@@ -1278,11 +1292,13 @@ function render(){
       }
 
       let bec = null;
+      let bChance = null;
       if(pb && areaNp >= MIN_BLOCK_NP){
         const adh_key = String(dow * 100 + hour);
         const fine    = activeFine !== null ? activeFine : streetFine(street, hour);
         const joint   = pb.adh ? (pb.adh[adh_key] || 0) : 0;
         bec = (joint / DAYS_OF_DOW[dow]) * fine;
+        bChance = fine>0 ? (bec/fine*100) : 0;
         const joint3 = pb.adh3 ? (pb.adh3[adh_key] || 0) : 0;
         pb._bec3 = (pb.an3 >= MIN_BLOCK_NP && joint3 > 0)
           ? (joint3 / DAYS_OF_DOW3[dow]) * fine
@@ -1308,7 +1324,7 @@ function render(){
           <div class="baddr">${addr}</div>
           <div class="bbar-t"><div class="bbar-f ${bfrc}" style="width:${bpct}%"></div></div>
           <div class="btix">${ticketLabel}</div>
-          <div class="bec ${brc}">${sparse?'<span class="sparse-badge">low data</span>':fmtCost(bec)+'/hr'}${becNostop!==null?`<div class="bec-nostop">${fmtCost(becNostop)}/hr no-stop</div>`:''}</div>
+          <div class="bec ${brc}">${sparse?'<span class="sparse-badge">low data</span>':fmtCost(bec)+'/hr'}${!sparse&&bChance!==null?`<div class="bec-chance">${bChance.toFixed(1)}% chance</div>`:''}${becNostop!==null?`<div class="bec-nostop">${fmtCost(becNostop)}/hr no-stop</div>`:''}</div>
         </div>
         <div class="bdetail${isOpen?' open':''}" id="bd${blk}">
           ${dayCnt!==null?`<div class="bdr"><span class="bdl">${DAY_NAMES[dow]} tickets (2025)</span><span>${dayCnt}</span></div>`:''}
@@ -1357,10 +1373,11 @@ function render(){
       </div>
 
       <div class="cost-row">
-        <div class="cost-big ${rc}">${fmtCost(ec)}</div>
-        <div class="cost-unit"><span>expected cost</span><span>per hour parked</span></div>
+        <div class="cost-big ${rc}">${pct.toFixed(1)}%</div>
+        <div class="cost-unit"><span>chance of ticket</span><span>this hour, this day of week</span></div>
+        <div class="cost-pct ${rc}">${fmtCost(ec)}<span>expected cost/hr</span></div>
       </div>
-      <div class="prob-line">historically, a ticket was written at this hour on <strong>${pct.toFixed(2)}%</strong> of days · expected cost on a $${Math.round(streetFineAmt)} ${matchedLot ? 'machine violation fine' : 'avg fine'}</div>
+      <div class="prob-line">historically, a ticket was written at this hour on <strong>${pct.toFixed(1)}%</strong> of ${DAY_NAMES[dow]}s · expected cost on a $${Math.round(streetFineAmt)} ${matchedLot ? 'machine violation fine' : 'avg fine'}</div>
       ${peakFlag ? peakFlag : ''}
       ${matchedLot ? `<div class="lot-banner">
         <div class="lot-banner-icon">🅿</div>
